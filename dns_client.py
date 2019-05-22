@@ -21,7 +21,7 @@ def dns_handle(s, addr, data, command):
     global b64str
     if qtype == QTYPE.A:
         if qname.label[0] != 'end':
-            str = ''.join(qname.label).replace('ns1pangjieml', '')
+            str = ''.join(qname.label).replace('ns1pangjieml', '')  #根据实际域名更改'ns1pangjieml'
             b64str += str
         else:
             print zlib.decompress(base64.b64decode(b64str.replace('-', '+').replace('~', '=')))
