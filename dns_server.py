@@ -10,7 +10,7 @@ import base64
 import re
 import time
 
-dns_server = '192.10.22.22'
+dns_server = '192.10.22.22'  #ip上线则填ip,通过域名则填公共域名服务器如：8.8.8.8
 port = 53
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sp = 10
