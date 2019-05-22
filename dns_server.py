@@ -109,7 +109,7 @@ def exec_command(command):
                 ss_b64 = base64.b64encode(ss)
                 # 公共域名解析服务器在域名请求中不支持+ = 替换
                 ll = ss_b64.replace('+', '-').replace('=', '~')
-    if len(ll) < 51:
+    if len(ll) < 51 and len(ll) != 0:
         post_queue.put(ll)
         post_queue.put('end')
     # 分割
